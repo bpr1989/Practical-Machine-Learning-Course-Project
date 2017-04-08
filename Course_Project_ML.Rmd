@@ -1,0 +1,256 @@
+---
+title: "Practical Machine Learning"
+author: "Bhanuprakash"
+date: "4 April 2017"
+output: html_document
+---
+# Executive Summary
+
+        Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+        
+        In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+        
+        We will use the datasets from the given links, do some exploratory analysis, prepare the data and try to apply some algorithms to it. We shall select the appropriate algorithm based on its accuracy on test sets. We shall use that algorithm to predict the test set mentioned in the problem. 
+        
+        According to our analysis we find random forest algorithm with cross validation only as the most suitable algorithm and use it for our predictions.
+        
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+# Approach
+
+We shall first read the datasets. Divide the training datasets further into training and validation datasets for testing the accuracy of our algorithms.
+
+As we need to predict classification of the class of exercise, we shall start with Decision Tree algorithm first and then check for Random Forest algorithm. 
+
+##Loading the training & testing datasets from the given links
+
+```{r}
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- read.csv(url(train_url))
+
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test <- read.csv(url(test_url))
+```
+
+##Creating a Validation Set using random sampling
+
+We first divide the training set into training and validation sets - 75% into training and 25% into validation.
+
+```{r}
+suppressMessages(library(caret))
+inTrain <- createDataPartition(y=train$classe,p=0.75,list = FALSE)
+training <- train[inTrain,]
+validation <- train[-inTrain,]
+```
+## Exploratory Analysis
+
+We observe that the dataset is highly dimensional. We need to find a way to reduce the dimensions of the dataset.
+
+After initial probing we see that many of the columns have lot of NA values. 
+
+We also look for columns with Zero variances and have nothing to offer. 
+
+```{r}
+x <- sapply(training,is.na)
+y <- apply(x,2,sum)
+y
+
+training_impute <- training[names(y[!y>0])]
+validation <- validation[names(y[!y>0])]
+
+```
+
+## Preparation of Dataset for analysis
+
+We have identified the columns with lot of NA values and removed it. We shall now remove the identified columns with near Zero variances in Training & Validation sets.
+
+```{r}
+
+x <- nearZeroVar(training_impute)
+x
+
+training_impute <- training_impute[,-x]
+training_impute <- training_impute[,-(1:5)]
+
+
+validation <- validation[,-x]
+validation <- validation[,-(1:5)]
+
+```
+
+# Application of Algorithms
+
+We first try Decision Tree Algorithm to the problem
+
+```{r, eval= FALSE}
+library(caret)
+library(AppliedPredictiveModeling)
+set.seed(12345)
+controlRF <- trainControl(method="repeatedcv", number=3, verboseIter=FALSE)
+fit_rforest <- train(classe~.,data=training_impute,method = 'rpart',trContol = controlRF)
+
+```
+
+We are unable to apply rpart on such a big dataset using a laptop of 4 GB ram. 
+
+Hence, will attempt to divide the training set further into 3 parts and try the prediction.
+
+# Further Division of Dataset
+
+We are breaking the training dataset into 3 parts using caret package
+
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y=training_impute$classe,p=0.25,list = FALSE)
+training_1 <- training_impute[inTrain,]
+training_remainder <- training_impute[-inTrain,]
+
+set.seed(12345)
+inTrain <- createDataPartition(y=validation$classe,p=0.25,list = FALSE)
+validation_1 <- validation[inTrain,]
+validation_remainder <- validation[-inTrain,]
+
+set.seed(12345)
+inTrain <- createDataPartition(y=training_remainder$classe,p=0.33,list = FALSE)
+training_2 <- training_remainder[inTrain,]
+training_remainder <- training_remainder[-inTrain,]
+set.seed(12345)
+inTrain <- createDataPartition(y=validation_remainder$classe,p=0.33,list = FALSE)
+validation_2 <- validation_remainder[inTrain,]
+validation_remainder <- validation_remainder[-inTrain,]
+
+set.seed(12345)
+inTrain <- createDataPartition(y=training_remainder$classe,p=0.50,list = FALSE)
+training_3 <- training_remainder[inTrain,]
+training_4 <- training_remainder[-inTrain,]
+set.seed(12345)
+inTrain <- createDataPartition(y=validation_remainder$classe,p=0.50,list = FALSE)
+validation_3 <- validation_remainder[inTrain,]
+validation_4 <- validation_remainder[-inTrain,]
+
+
+```
+
+# Applying Decision Tree(rpart) alogortihm & checking its accuracy
+
+We shall apply Decision Tree algorithm to the 1st training set in the following ways to check the difference in accuracy - 
+
+- Without any preprocessing or cross-validation
+- With preprocessing
+- with cross-validation
+- Using both
+
+After selecting an algorithm on basis of its accuracy we shall apply on remaining training sets
+
+## Building the models accordingly
+
+```{r}
+library(rpart)
+set.seed(12345)
+rp_model1 <- train(classe ~.,data = training_1,method = 'rpart')
+rp_model2 <- train(classe ~.,data = training_1,method = 'rpart',preProcess=c("center", "scale"))
+rp_model3 <- train(classe ~.,data = training_1,method = 'rpart',trControl=trainControl(method = "cv", number = 4))
+rp_model4 <- train(classe ~.,data = training_1,method = 'rpart',trControl=trainControl(method = "cv", number = 4),preProcess=c("center", "scale"))
+```
+
+## Predicting on the Validation Sets to check for accuracy
+
+```{r}
+Predict1 <- predict(rp_model1,validation_1)
+Predict2 <- predict(rp_model2,validation_1)
+Predict3 <- predict(rp_model3,validation_1)
+Predict4 <- predict(rp_model4,validation_1)
+confusionMatrix(Predict1,validation_1$classe)$overall['Accuracy']
+confusionMatrix(Predict1,validation_1$classe)$overall['Accuracy']
+confusionMatrix(Predict1,validation_1$classe)$overall['Accuracy']
+confusionMatrix(Predict1,validation_1$classe)$overall['Accuracy']
+
+```
+
+The accuracy levels of Decision Tree is hovering around 59% which is very less.
+
+# Applying Random Forest alogrithm & checking its accuracy
+
+We shall apply random forest algorithm to the 1st training set in the following ways to check the difference in accuracy - 
+
+- Without any preprocessing or cross-validation
+- With preprocessing
+- with cross-validation
+- Using both
+
+After selecting an algorithm on basis of its accuracy we shall apply on remaining training sets
+## Building the models accordingly
+
+```{r}
+suppressMessages(library(randomForest))
+set.seed(12345)
+rf_model1 <- train(classe ~.,data = training_1,method = 'rf')
+rf_model2 <- train(classe ~.,data = training_1,method = 'rf',preProcess=c("center", "scale"))
+rf_model3 <- train(classe ~.,data = training_1,method = 'rf',trControl=trainControl(method = "cv", number = 4))
+rf_model4 <- train(classe ~.,data = training_1,method = 'rf',trControl=trainControl(method = "cv", number = 4),preProcess=c("center", "scale"))
+
+```
+
+## Predicting on the Validation Sets to check for accuracy
+
+```{r}
+Prediction1 <- predict(rf_model1,validation_1)
+Prediction2 <- predict(rf_model2,validation_1)
+Prediction3 <- predict(rf_model3,validation_1)
+Prediction4 <- predict(rf_model4,validation_1)
+confusionMatrix(Prediction1,validation_1$classe)$overall['Accuracy']
+confusionMatrix(Prediction2,validation_1$classe)$overall['Accuracy']
+confusionMatrix(Prediction3,validation_1$classe)$overall['Accuracy']
+confusionMatrix(Prediction4,validation_1$classe)$overall['Accuracy']
+```
+It appears that only Cross-validation has given better accuracy than the other models.
+
+Also, the accuracy is around 98% which is way higher than a simple decision tree algorithm.
+
+# Conclusions
+We see that random forest is far better than the decision tree algorithm and as it has given us more than 99% accuracy we see no need of using some other algorithm. 
+
+We shall first test if it holds good for other training sets 
+
+## Builidng using other training sets
+
+```{r}
+rf_model3_training2 <- train(classe ~.,data = training_2,method = 'rf',trControl=trainControl(method = "cv", number = 4))
+rf_model3_training3 <- train(classe ~.,data = training_3,method = 'rf',trControl=trainControl(method = "cv", number = 4))
+rf_model3_training4 <- train(classe ~.,data = training_4,method = 'rf',trControl=trainControl(method = "cv", number = 4))
+
+Prediction3_training2 <- predict(rf_model3_training2,validation_2)
+Prediction3_training3 <- predict(rf_model3_training3,validation_3)
+Prediction3_training4 <- predict(rf_model3_training4,validation_4)
+confusionMatrix(Prediction3_training2,validation_2$classe)$overall['Accuracy']
+confusionMatrix(Prediction3_training3,validation_3$classe)$overall['Accuracy']
+confusionMatrix(Prediction3_training4,validation_4$classe)$overall['Accuracy']
+```
+
+We can see that the accuracy levels have been maintained all over the training sets. Also we see that the accuracy level of the model devloped using the first traning set is the highest. Hence, we will use it for our predictions.
+
+## Sample errors
+
+Calculating the out of sample errors for the 4 validations sets we used using Random Forest algorithm with only cross-validation
+
+- Testing set 1 -> 1-0.9935 = 0.0065
+- Testing set 2 -> 1-0.9877 = 0.0123
+- Testing set 3 -> 1-0.9748 = 0.0252
+- Testing set 4 -> 1-0.9846 = 0.0154
+
+
+# Predictions
+
+We shall now predict the 20 test cases provided in the problem
+
+```{r,cache= TRUE}
+predict(rf_model3,test)
+```
+
+
